@@ -1,0 +1,135 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: order-processing-worker
+
+  # Allow circular references and bean overriding as fallback
+  main:
+    allow-bean-definition-overriding: true
+    allow-circular-references: true
+    lazy-initialization: false
+
+  kafka:
+    bootstrap-servers: localhost:9092
+    consumer:
+      group-id: order-processing-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      enable-auto-commit: false
+      properties:
+        max.poll.records: 10
+        session.timeout.ms: 30000
+        heartbeat.interval.ms: 3000
+    listener:
+      ack-mode: manual_immediate
+      concurrency: 3
+      poll-timeout: 3000
+
+  data:
+    # MongoDB Configuration
+    mongodb:
+      uri: mongodb://admin:pass@localhost:27017/orderdb?authSource=admin
+      auto-index-creation: true
+
+  # Redis Configuration
+    redis:
+      host: localhost
+      port: 6379
+      password: pass
+      timeout: 2000ms
+      lettuce:
+        pool:
+          max-active: 10
+          max-idle: 10
+          min-idle: 1
+
+  # Jackson Configuration
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+    deserialization:
+      fail-on-unknown-properties: false
+
+# Application Configuration
+app:
+  kafka:
+    topics:
+      orders: order-events
+
+  # External APIs Configuration
+  external-apis:
+    product-service:
+      base-url: http://localhost:3001
+      timeout: 5000ms
+    customer-service:
+      base-url: http://localhost:3002
+      timeout: 5000ms
+
+  # Retry Configuration
+  retry:
+    max-attempts: 3
+    initial-delay: 1000ms
+    max-delay: 10000ms
+    multiplier: 2.0
+
+  # Lock Configuration
+  lock:
+    default-lease-time: 30000ms
+    default-wait-time: 5000ms
+
+# Resilience4j Configuration
+resilience4j:
+  retry:
+    instances:
+      external-api:
+        max-attempts: 3
+        wait-duration: 1s
+        exponential-backoff-multiplier: 2
+        retry-exceptions:
+          - java.net.ConnectException
+          - java.net.SocketTimeoutException
+          - org.springframework.web.reactive.function.client.WebClientRequestException
+
+  circuitbreaker:
+    instances:
+      external-api:
+        register-health-indicator: true
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        permitted-number-of-calls-in-half-open-state: 3
+        automatic-transition-from-open-to-half-open-enabled: true
+        wait-duration-in-open-state: 5s
+        failure-rate-threshold: 50
+        record-exceptions:
+          - java.net.ConnectException
+          - java.net.SocketTimeoutException
+          - org.springframework.web.reactive.function.client.WebClientRequestException
+
+# Management/Actuator Configuration
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+
+logging:
+  level:
+    com.apex.orderprocessingworker: DEBUG
+    org.springframework.kafka: INFO
+    org.springframework.data.mongodb: INFO
+    org.springframework.data.redis: DEBUG
+    org.springframework.data.mongodb.core.ReactiveMongoTemplate: DEBUG
+    org.springframework.beans.factory: WARN
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
